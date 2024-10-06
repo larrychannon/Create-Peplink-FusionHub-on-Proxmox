@@ -61,7 +61,7 @@ CORES=2                         # Number of CPU cores
 MEMORY=1024                     # Memory for the VM (in MB)
 NETWORK="virtio,bridge=vmbr0"   # Network configuration
 OS_TYPE="l26"                   # Operating system type (change accordingly)
-IMG_NAME="fusionhub_sfcn-8.5.0-build5225.raw"            # Name of the downloaded image
+IMG_NAME="fusionhub_sfcn-8.4.1-build5195.raw"            # Name of the downloaded image
 IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the RAW image
 IMG_DIR="/var/lib/vz/template/iso/"    # Directory to store the downloaded image
 IMG_PATH="$IMG_DIR/$IMG_NAME"   # Full path to the image
