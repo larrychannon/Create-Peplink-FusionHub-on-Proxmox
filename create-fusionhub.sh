@@ -10,7 +10,7 @@ usage() {
   echo "  --CORES       Number of CPU cores (default: 2)"
   echo "  --NETWORK     Network configuration (default: virtio,bridge=vmbr0)"
   echo "  --OS_TYPE     Operating system type (default: l26)"
-  echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.0-build5225.raw)"
+  echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1-build5246.raw)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --help, -h    Display this help message"
   exit 1
