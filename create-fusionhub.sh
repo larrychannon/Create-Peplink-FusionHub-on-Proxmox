@@ -10,7 +10,7 @@ usage() {
   echo "  --CORES       Number of CPU cores (default: 2)"
   echo "  --NETWORK     Network configuration (default: virtio,bridge=vmbr0)"
   echo "  --OS_TYPE     Operating system type (default: l26)"
-  echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.0-build5225.raw)"
+  echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1-build5246.raw)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --help, -h    Display this help message"
   exit 1
@@ -78,7 +78,7 @@ CORES=2                                            # Number of CPU cores
 MEMORY=1024                                        # Memory for the VM (in MB)
 NETWORK="virtio,bridge=vmbr0"                      # Network configuration
 OS_TYPE="l26"                                      # Operating system type (change accordingly)
-IMG_NAME="fusionhub_sfcn-8.5.0-build5225.raw"       # Name of the downloaded image
+IMG_NAME="fusionhub_sfcn-8.5.1-build5246.raw"       # Name of the downloaded image
 IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the RAW image
 IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the downloaded image
 IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
