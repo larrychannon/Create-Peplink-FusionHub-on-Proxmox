@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -12,6 +12,7 @@ usage() {
   echo "  --OS_TYPE     Operating system type (default: l26)"
   echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1-build5246.raw)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
+  echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
   echo "  --help, -h    Display this help message"
   exit 1
 }
@@ -72,6 +73,24 @@ configure_boot() {
   qm set "$vmid" --boot c --bootdisk scsi0 || { echo "❌ Boot configuration failed."; exit 1; }
 }
 
+# Function to attach ISO and start VM if CI mode
+attach_iso_and_start() {
+  local vmid=$1
+  local iso_name=$2
+  
+  local iso_path="/var/lib/vz/template/iso/$iso_name"
+  
+  if [ -f "$iso_path" ]; then
+    echo "💿 Attaching ISO $iso_name to VM $vmid..."
+    qm set "$vmid" --ide2 "local:iso/$iso_name,media=cdrom" || { echo "❌ ISO attachment failed."; exit 1; }
+    echo "🚀 Starting VM $vmid..."
+    qm start "$vmid" || { echo "❌ VM start failed."; exit 1; }
+  else
+    echo "❌ ISO file $iso_path not found."
+    exit 1
+  fi
+}
+
 # Default Variables
 VM_NAME="FusionHub"                                # Name of the new VM
 CORES=2                                            # Number of CPU cores
@@ -82,6 +101,7 @@ IMG_NAME="fusionhub_sfcn-8.5.1-build5246.raw"       # Name of the downloaded ima
 IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the RAW image
 IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the downloaded image
 IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
+CI_ISO=""                                          # Optional ISO for automated setup
 
 # Flags to track if variables are set via arguments
 VM_NAME_SET=false
@@ -91,6 +111,7 @@ NETWORK_SET=false
 OS_TYPE_SET=false
 IMG_NAME_SET=false
 IMG_DIR_SET=false
+CI_ISO_SET=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -142,6 +163,12 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --CI_ISO)
+      CI_ISO="$2"
+      CI_ISO_SET=true
+      shift
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -164,6 +191,7 @@ display_variables() {
   echo "OS_TYPE : $OS_TYPE ($( [ "$OS_TYPE_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "IMG_NAME: $IMG_NAME ($( [ "$IMG_NAME_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "IMG_DIR : $IMG_DIR ($( [ "$IMG_DIR_SET" = true ] && echo "user-defined" || echo "default"))"
+  echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_URL : $IMG_URL"
   echo "IMG_PATH: $IMG_PATH"
   echo "----------------------------------------"
@@ -197,6 +225,9 @@ attach_disk "$VMID" "$IMG_PATH" "$STORAGE"
 # Configure the VM boot options
 configure_boot "$VMID"
 
-# Optionally, add more configurations here, like setting up a CD-ROM or additional hardware
-
-echo "✅ VM with ID $VMID ('$VM_NAME') created and RAW image attached successfully."
+# If CI_ISO is provided, attach it and start the VM
+if [ -n "$CI_ISO" ]; then
+  attach_iso_and_start "$VMID" "$CI_ISO"
+else
+  echo "✅ VM with ID $VMID ('$VM_NAME') created and RAW image attached successfully."
+fi
