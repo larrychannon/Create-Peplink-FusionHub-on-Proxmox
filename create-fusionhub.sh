@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -13,6 +13,7 @@ usage() {
   echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1-build5246.raw)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
+  echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
   echo "  --help, -h    Display this help message"
   exit 1
 }
@@ -102,6 +103,7 @@ IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the
 IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the downloaded image
 IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
 CI_ISO=""                                          # Optional ISO for automated setup
+IMG_NAME_LOCAL=""                                  # Optional local image path
 
 # Flags to track if variables are set via arguments
 VM_NAME_SET=false
@@ -112,6 +114,7 @@ OS_TYPE_SET=false
 IMG_NAME_SET=false
 IMG_DIR_SET=false
 CI_ISO_SET=false
+IMG_NAME_LOCAL_SET=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -169,6 +172,12 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --IMG_NAME_LOCAL)
+      IMG_NAME_LOCAL="$2"
+      IMG_NAME_LOCAL_SET=true
+      shift
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -192,8 +201,11 @@ display_variables() {
   echo "IMG_NAME: $IMG_NAME ($( [ "$IMG_NAME_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "IMG_DIR : $IMG_DIR ($( [ "$IMG_DIR_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
-  echo "IMG_URL : $IMG_URL"
-  echo "IMG_PATH: $IMG_PATH"
+  echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
+  if [ -z "$IMG_NAME_LOCAL" ]; then
+    echo "IMG_URL : $IMG_URL"
+    echo "IMG_PATH: $IMG_PATH"
+  fi
   echo "----------------------------------------"
 }
 
@@ -210,11 +222,21 @@ if [ -z "$STORAGE" ]; then
   exit 1
 fi
 
-# Create the image directory if it doesn't exist
-mkdir -p "$IMG_DIR" || { echo "❌ Failed to create directory '$IMG_DIR'."; exit 1; }
-
-# Download the RAW image if it doesn't already exist or is zero bytes
-download_image "$IMG_URL" "$IMG_PATH"
+# Handle image source - either local or download
+if [ -n "$IMG_NAME_LOCAL" ]; then
+  if [ -f "$IMG_NAME_LOCAL" ]; then
+    echo "✅ Using local image: $IMG_NAME_LOCAL"
+    IMG_PATH="$IMG_NAME_LOCAL"
+  else
+    echo "❌ Local image file not found: $IMG_NAME_LOCAL"
+    exit 1
+  fi
+else
+  # Create the image directory if it doesn't exist
+  mkdir -p "$IMG_DIR" || { echo "❌ Failed to create directory '$IMG_DIR'."; exit 1; }
+  # Download the RAW image if it doesn't already exist or is zero bytes
+  download_image "$IMG_URL" "$IMG_PATH"
+fi
 
 # Create a new VM
 create_vm "$VMID" "$VM_NAME" "$MEMORY" "$CORES" "$NETWORK" "$OS_TYPE"
