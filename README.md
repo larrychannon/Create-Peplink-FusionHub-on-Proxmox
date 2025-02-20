@@ -1,5 +1,5 @@
 ## Description
-This project provides a script to set up FusionHub on a Proxmox server environment
+This project provides a script to set up Peplink FusionHub on a Proxmox server environment
 
 ## Instructions
 To set up the project, follow these steps:
