@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -14,6 +14,7 @@ usage() {
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
+  echo "  --LICENSE     License key for FusionHub (optional)"
   echo "  --help, -h    Display this help message"
   exit 1
 }
@@ -92,6 +93,32 @@ attach_iso_and_start() {
   fi
 }
 
+# Function to create Cloud-init ISO with license
+create_cloud_init_iso() {
+  local license=$1
+  local vmid=$2
+  local vm_name=$3
+  local iso_name="vmid${vmid}-${vm_name}-license.iso"
+  local iso_path="/var/lib/vz/template/iso/$iso_name"
+  local temp_dir=$(mktemp -d)
+  
+  # Create user-data file
+  cat > "$temp_dir/user-data" << EOF
+TYPE="Peplink_User_Data"
+VERSION="1"
+LICENSE="$license"
+EOF
+  
+  # Create the ISO
+  genisoimage -output "$iso_path" -volid cidata -joliet -rock "$temp_dir/user-data"
+  
+  # Clean up
+  rm -rf "$temp_dir"
+  
+  echo "✅ Created Cloud-init ISO with license at $iso_path"
+  echo "$iso_name"
+}
+
 # Default Variables
 VM_NAME="FusionHub"                                # Name of the new VM
 CORES=2                                            # Number of CPU cores
@@ -104,6 +131,7 @@ IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the down
 IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
 CI_ISO=""                                          # Optional ISO for automated setup
 IMG_NAME_LOCAL=""                                  # Optional local image path
+LICENSE=""                                         # Optional license key
 
 # Flags to track if variables are set via arguments
 VM_NAME_SET=false
@@ -115,6 +143,7 @@ IMG_NAME_SET=false
 IMG_DIR_SET=false
 CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
+LICENSE_SET=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -178,6 +207,12 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --LICENSE)
+      LICENSE="$2"
+      LICENSE_SET=true
+      shift
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -202,6 +237,7 @@ display_variables() {
   echo "IMG_DIR : $IMG_DIR ($( [ "$IMG_DIR_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
+  echo "LICENSE : ${LICENSE:-None} ($( [ "$LICENSE_SET" = true ] && echo "user-defined" || echo "not set"))"
   if [ -z "$IMG_NAME_LOCAL" ]; then
     echo "IMG_URL : $IMG_URL"
     echo "IMG_PATH: $IMG_PATH"
@@ -246,6 +282,12 @@ attach_disk "$VMID" "$IMG_PATH" "$STORAGE"
 
 # Configure the VM boot options
 configure_boot "$VMID"
+
+# If LICENSE is provided, create Cloud-init ISO
+if [ -n "$LICENSE" ]; then
+  CI_ISO=$(create_cloud_init_iso "$LICENSE" "$VMID" "$VM_NAME")
+  CI_ISO_SET=true
+fi
 
 # If CI_ISO is provided, attach it and start the VM
 if [ -n "$CI_ISO" ]; then
