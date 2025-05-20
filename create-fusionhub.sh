@@ -115,7 +115,7 @@ EOF
   # Clean up
   rm -rf "$temp_dir"
   
-  echo "✅ Created Cloud-init ISO with license at $iso_path"
+  echo "✅ Created Cloud-init ISO with license at $iso_path" >&2
   echo "$iso_name"
 }
 
