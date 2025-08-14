@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -11,6 +11,7 @@ usage() {
   echo "  --NETWORK     Network configuration (default: virtio,bridge=vmbr0)"
   echo "  --OS_TYPE     Operating system type (default: l26)"
   echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1s045-build5258.raw)"
+  echo "  --IMG_URL     URL to download the RAW image (optional)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
@@ -140,6 +141,7 @@ CORES_SET=false
 NETWORK_SET=false
 OS_TYPE_SET=false
 IMG_NAME_SET=false
+IMG_URL_SET=false
 IMG_DIR_SET=false
 CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
@@ -182,9 +184,17 @@ while [[ $# -gt 0 ]]; do
       ;;
     --IMG_NAME)
       IMG_NAME="$2"
-      IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # Update IMG_URL if IMG_NAME changes
+      if [ "$IMG_URL_SET" = false ]; then
+        IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # Update IMG_URL if IMG_NAME changes and IMG_URL not explicitly set
+      fi
       IMG_PATH="$IMG_DIR/$IMG_NAME"
       IMG_NAME_SET=true
+      shift
+      shift
+      ;;
+    --IMG_URL)
+      IMG_URL="$2"
+      IMG_URL_SET=true
       shift
       shift
       ;;
@@ -239,7 +249,7 @@ display_variables() {
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "LICENSE : ${LICENSE:-None} ($( [ "$LICENSE_SET" = true ] && echo "user-defined" || echo "not set"))"
   if [ -z "$IMG_NAME_LOCAL" ]; then
-    echo "IMG_URL : $IMG_URL"
+    echo "IMG_URL : $IMG_URL ($( [ "$IMG_URL_SET" = true ] && echo "user-defined" || echo "auto-generated"))"
     echo "IMG_PATH: $IMG_PATH"
   fi
   echo "----------------------------------------"
