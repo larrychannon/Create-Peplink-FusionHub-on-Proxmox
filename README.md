@@ -43,6 +43,12 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --IMG_NAME_LOCAL "/path/to/your/image.raw"
 ```
 
+### Using Custom Image URL
+```bash
+# Create a VM using a custom download URL
+bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --IMG_URL "https://example.com/path/to/fusionhub.raw"
+```
+
 ## Available Arguments
 
 - `--VM_NAME`: Name of the new VM (default: FusionHub)
@@ -51,6 +57,7 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 - `--NETWORK`: Network configuration (default: virtio,bridge=vmbr0)
 - `--OS_TYPE`: Operating system type (default: l26)
 - `--IMG_NAME`: Name of the RAW image (default: fusionhub_sfcn-8.5.1s045-build5258.raw)
+- `--IMG_URL`: URL to download the RAW image (optional)
 - `--IMG_DIR`: Directory to store the downloaded image (default: /var/lib/vz/template/iso/)
 - `--LICENSE`: License key for FusionHub (optional)
 - `--IMG_NAME_LOCAL`: Path to local RAW image file (optional)
