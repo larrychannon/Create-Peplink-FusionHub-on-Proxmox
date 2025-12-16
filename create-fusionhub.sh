@@ -73,7 +73,7 @@ configure_boot() {
   local vmid=$1
 
   echo "🔄 Configuring boot options for VM $vmid..."
-  qm set "$vmid" --boot c --bootdisk scsi0 || { echo "❌ Boot configuration failed."; exit 1; }
+  qm set "$vmid" --boot c --bootdisk scsi0 --onboot 1 || { echo "❌ Boot configuration failed."; exit 1; }
 }
 
 # Function to attach ISO and start VM if CI mode
