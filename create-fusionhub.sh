@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -16,6 +16,7 @@ usage() {
   echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
   echo "  --LICENSE     License key for FusionHub (optional)"
+  echo "  --STORAGE     Proxmox storage pool to use (default: auto-detect)"
   echo "  --help, -h    Display this help message"
   exit 1
 }
@@ -25,9 +26,14 @@ get_next_vmid() {
   pvesh get /cluster/nextid
 }
 
-# Function to get the LVM storage pool
-get_lvm_storage() {
-  pvesm status | grep lvm | awk '{print $1}'
+# Function to get suitable storage pool for VM disk images
+# Finds ANY storage that supports images and has > 1GB free space
+get_storage() {
+  # Get first storage pool that:
+  # - Supports 'images' content type
+  # - Has more than 1GB (1048576 KiB) available space
+  # awk: NR>1 skips header, $6>1048576 checks available space, print first match
+  pvesm status --content images | awk 'NR>1 && $6>1048576 {print $1; exit}'
 }
 
 # Simplified Function to download the RAW image if it doesn't exist or is zero bytes
@@ -133,6 +139,7 @@ IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
 CI_ISO=""                                          # Optional ISO for automated setup
 IMG_NAME_LOCAL=""                                  # Optional local image path
 LICENSE=""                                         # Optional license key
+STORAGE=""                                         # Storage pool (auto-detected if not specified)
 
 # Flags to track if variables are set via arguments
 VM_NAME_SET=false
@@ -146,6 +153,7 @@ IMG_DIR_SET=false
 CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
 LICENSE_SET=false
+STORAGE_SET=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -223,6 +231,12 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --STORAGE)
+      STORAGE="$2"
+      STORAGE_SET=true
+      shift
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -248,6 +262,7 @@ display_variables() {
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "LICENSE : ${LICENSE:-None} ($( [ "$LICENSE_SET" = true ] && echo "user-defined" || echo "not set"))"
+  echo "STORAGE : ${STORAGE:-Auto-detect} ($( [ "$STORAGE_SET" = true ] && echo "user-defined" || echo "auto-detect"))"
   if [ -z "$IMG_NAME_LOCAL" ]; then
     echo "IMG_URL : $IMG_URL ($( [ "$IMG_URL_SET" = true ] && echo "user-defined" || echo "auto-generated"))"
     echo "IMG_PATH: $IMG_PATH"
@@ -260,13 +275,33 @@ display_variables
 
 # Derived Variables
 VMID=$(get_next_vmid)           # Automatically assign the next available VMID
-STORAGE=$(get_lvm_storage)      # Get the LVM storage pool dynamically
+
+# Get storage pool - use user-specified or auto-detect
+if [ -z "$STORAGE" ]; then
+  STORAGE=$(get_storage)
+  STORAGE_SOURCE="auto-detected"
+else
+  STORAGE_SOURCE="user-specified"
+  # Validate that the user-specified storage exists and supports images
+  if ! pvesm status --content images | grep -q "^$STORAGE "; then
+    echo "❌ Storage pool '$STORAGE' not found or does not support disk images."
+    echo "Available storage pools that support disk images:"
+    pvesm status --content images | awk 'NR>1 {print "   - " $1 " (Type: " $2 ")"}'
+    exit 1
+  fi
+fi
 
 # Check if STORAGE is found
 if [ -z "$STORAGE" ]; then
-  echo "❌ No LVM storage found. Exiting."
+  echo "❌ No suitable storage pool found that supports disk images."
+  echo "Available storage pools that support disk images:"
+  pvesm status --content images | awk 'NR>1 {print "   - " $1 " (Type: " $2 ")"}'
   exit 1
 fi
+
+# Display selected storage
+STORAGE_TYPE=$(pvesm status | grep "^$STORAGE " | awk '{print $2}')
+echo "📦 Using storage: $STORAGE (Type: $STORAGE_TYPE, Source: $STORAGE_SOURCE)"
 
 # Handle image source - either local or download
 if [ -n "$IMG_NAME_LOCAL" ]; then
