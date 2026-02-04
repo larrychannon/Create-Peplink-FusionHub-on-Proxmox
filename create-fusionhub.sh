@@ -70,8 +70,27 @@ attach_disk() {
   local storage=$3
 
   echo "🖇️  Importing disk image to VM $vmid..."
-  qm importdisk "$vmid" "$img_path" "$storage" || { echo "❌ Disk import failed."; exit 1; }
-  qm set "$vmid" --scsihw virtio-scsi-pci --scsi0 "${storage}:vm-${vmid}-disk-0" || { echo "❌ Setting disk failed."; exit 1; }
+  local import_output=""
+  if ! import_output=$(qm importdisk "$vmid" "$img_path" "$storage" 2>&1); then
+    echo "$import_output"
+    echo "❌ Disk import failed."
+    exit 1
+  fi
+
+  # Proxmox "dir" storage requires a full volid like "local:115/vm-115-disk-0.raw",
+  # while other backends may use "storage:vm-115-disk-0". Use the returned volid.
+  local disk_volid=""
+  disk_volid="$(printf '%s\n' "$import_output" | sed -nE "s/.*successfully imported disk '([^']+)'.*/\\1/p" | tail -n 1)"
+  if [ -z "$disk_volid" ]; then
+    disk_volid="$(qm config "$vmid" | awk -F': ' '/^unused[0-9]+:/{print $2; exit}')"
+  fi
+  if [ -z "$disk_volid" ]; then
+    echo "$import_output"
+    echo "❌ Could not determine imported disk volume ID."
+    exit 1
+  fi
+
+  qm set "$vmid" --scsihw virtio-scsi-pci --scsi0 "$disk_volid" || { echo "❌ Setting disk failed."; exit 1; }
 }
 
 # Function to configure the VM boot options
