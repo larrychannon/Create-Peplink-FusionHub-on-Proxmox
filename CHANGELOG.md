@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Cloud-init WAN/LAN network parameter support via CLI flags:
+  - WAN: `dhcp`, `static`, `pppoe` methods with method-specific fields
+  - LAN: `none`, `dhcp`, `static` methods with method-specific fields
+- Validation rules for required and disallowed WAN/LAN fields based on selected method.
+- Automatic cloud-init ISO generation when license and/or WAN/LAN settings are provided.
+
+### Changed
+- Cloud-init ISO generation now uses generated user-data content and is no longer license-only.
+- When generated cloud-init content is requested, generated ISO takes precedence over `--CI_ISO`.
+- Expanded `README.md` with WAN/LAN arguments, mode matrix, precedence behavior, and usage examples.
+
 ### Fixed
 - Correctly attaches imported disks on `dir`-type storages (e.g. `local`) by using the volume ID returned by `qm importdisk`.
 

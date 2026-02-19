@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool] [--WAN_CONN_METHOD method] [--LAN_CONN_METHOD method]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -17,6 +17,23 @@ usage() {
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
   echo "  --LICENSE     License key for FusionHub (optional)"
   echo "  --STORAGE     Proxmox storage pool to use (default: auto-detect)"
+  echo ""
+  echo "Cloud-init WAN options (optional):"
+  echo "  --WAN_CONN_METHOD        WAN connection method: dhcp, static, pppoe"
+  echo "  --WAN_DNS_AUTO           WAN DNS auto setting: yes or no"
+  echo "  --WAN_DNS_SERVERS        WAN DNS servers (quoted, space-separated IPs)"
+  echo "  --WAN_IPADDR             WAN static IP address"
+  echo "  --WAN_NETMASK            WAN static netmask"
+  echo "  --WAN_GATEWAY            WAN static gateway"
+  echo "  --WAN_PPPOE_USER         WAN PPPoE username"
+  echo "  --WAN_PPPOE_PASSWORD     WAN PPPoE password"
+  echo "  --WAN_PPPOE_SERVICE_NAME WAN PPPoE service name"
+  echo ""
+  echo "Cloud-init LAN options (optional):"
+  echo "  --LAN_CONN_METHOD        LAN connection method: none, dhcp, static"
+  echo "  --LAN_DHCP_CLIENT_ID     LAN DHCP client ID (optional)"
+  echo "  --LAN_IPADDR             LAN static IP address"
+  echo "  --LAN_NETMASK            LAN static netmask"
   echo "  --help, -h    Display this help message"
   exit 1
 }
@@ -119,21 +136,17 @@ attach_iso_and_start() {
   fi
 }
 
-# Function to create Cloud-init ISO with license
+# Function to create Cloud-init ISO with user-data content
 create_cloud_init_iso() {
-  local license=$1
+  local user_data=$1
   local vmid=$2
   local vm_name=$3
-  local iso_name="vmid${vmid}-${vm_name}-license.iso"
+  local iso_name="vmid${vmid}-${vm_name}-cloudinit.iso"
   local iso_path="/var/lib/vz/template/iso/$iso_name"
   local temp_dir=$(mktemp -d)
   
   # Create user-data file
-  cat > "$temp_dir/user-data" << EOF
-TYPE="Peplink_User_Data"
-VERSION="1"
-LICENSE="$license"
-EOF
+  printf "%s\n" "$user_data" > "$temp_dir/user-data"
   
   # Create the ISO
   genisoimage -output "$iso_path" -volid cidata -joliet -rock "$temp_dir/user-data"
@@ -141,8 +154,195 @@ EOF
   # Clean up
   rm -rf "$temp_dir"
   
-  echo "✅ Created Cloud-init ISO with license at $iso_path" >&2
+  echo "✅ Created Cloud-init ISO at $iso_path" >&2
   echo "$iso_name"
+}
+
+is_valid_choice() {
+  local value=$1
+  shift
+  local choices=("$@")
+  local choice
+  for choice in "${choices[@]}"; do
+    if [ "$value" = "$choice" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+has_any_cloud_init_network_arg() {
+  [ "$WAN_CONN_METHOD_SET" = true ] || [ "$WAN_DNS_AUTO_SET" = true ] || [ "$WAN_DNS_SERVERS_SET" = true ] || [ "$WAN_IPADDR_SET" = true ] || [ "$WAN_NETMASK_SET" = true ] || [ "$WAN_GATEWAY_SET" = true ] || [ "$WAN_PPPOE_USER_SET" = true ] || [ "$WAN_PPPOE_PASSWORD_SET" = true ] || [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ] || [ "$LAN_CONN_METHOD_SET" = true ] || [ "$LAN_DHCP_CLIENT_ID_SET" = true ] || [ "$LAN_IPADDR_SET" = true ] || [ "$LAN_NETMASK_SET" = true ]
+}
+
+validate_cloud_init_network_config() {
+  local has_wan_detail=false
+  local has_lan_detail=false
+  local wan_method=""
+  local lan_method=""
+
+  if [ "$WAN_DNS_AUTO_SET" = true ] || [ "$WAN_DNS_SERVERS_SET" = true ] || [ "$WAN_IPADDR_SET" = true ] || [ "$WAN_NETMASK_SET" = true ] || [ "$WAN_GATEWAY_SET" = true ] || [ "$WAN_PPPOE_USER_SET" = true ] || [ "$WAN_PPPOE_PASSWORD_SET" = true ] || [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ]; then
+    has_wan_detail=true
+  fi
+
+  if [ "$LAN_DHCP_CLIENT_ID_SET" = true ] || [ "$LAN_IPADDR_SET" = true ] || [ "$LAN_NETMASK_SET" = true ]; then
+    has_lan_detail=true
+  fi
+
+  if [ "$has_wan_detail" = true ] && [ "$WAN_CONN_METHOD_SET" != true ]; then
+    echo "❌ WAN fields were provided but --WAN_CONN_METHOD is missing."
+    usage
+  fi
+
+  if [ "$has_lan_detail" = true ] && [ "$LAN_CONN_METHOD_SET" != true ]; then
+    echo "❌ LAN fields were provided but --LAN_CONN_METHOD is missing."
+    usage
+  fi
+
+  if [ "$WAN_CONN_METHOD_SET" = true ]; then
+    wan_method="$WAN_CONN_METHOD"
+    if ! is_valid_choice "$wan_method" "dhcp" "static" "pppoe"; then
+      echo "❌ Invalid --WAN_CONN_METHOD '$wan_method'. Must be one of: dhcp, static, pppoe."
+      usage
+    fi
+
+    case "$wan_method" in
+      dhcp)
+        if [ "$WAN_DNS_AUTO_SET" = true ] && ! is_valid_choice "$WAN_DNS_AUTO" "yes" "no"; then
+          echo "❌ Invalid --WAN_DNS_AUTO '$WAN_DNS_AUTO'. Must be yes or no."
+          usage
+        fi
+        if [ "$WAN_DNS_AUTO_SET" != true ]; then
+          WAN_DNS_AUTO="yes"
+        fi
+        if [ "$WAN_DNS_AUTO" = "no" ] && [ -z "$WAN_DNS_SERVERS" ]; then
+          echo "❌ --WAN_DNS_SERVERS is required when --WAN_CONN_METHOD=dhcp and --WAN_DNS_AUTO=no."
+          usage
+        fi
+        if [ "$WAN_IPADDR_SET" = true ] || [ "$WAN_NETMASK_SET" = true ] || [ "$WAN_GATEWAY_SET" = true ] || [ "$WAN_PPPOE_USER_SET" = true ] || [ "$WAN_PPPOE_PASSWORD_SET" = true ] || [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ]; then
+          echo "❌ Static/PPPoE WAN fields are not allowed when --WAN_CONN_METHOD=dhcp."
+          usage
+        fi
+        ;;
+      static)
+        if [ -z "$WAN_IPADDR" ] || [ -z "$WAN_NETMASK" ] || [ -z "$WAN_GATEWAY" ] || [ -z "$WAN_DNS_SERVERS" ]; then
+          echo "❌ --WAN_CONN_METHOD=static requires --WAN_IPADDR, --WAN_NETMASK, --WAN_GATEWAY, and --WAN_DNS_SERVERS."
+          usage
+        fi
+        if [ "$WAN_DNS_AUTO_SET" = true ] || [ "$WAN_PPPOE_USER_SET" = true ] || [ "$WAN_PPPOE_PASSWORD_SET" = true ] || [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ]; then
+          echo "❌ --WAN_DNS_AUTO and PPPoE fields are not allowed when --WAN_CONN_METHOD=static."
+          usage
+        fi
+        ;;
+      pppoe)
+        if [ -z "$WAN_PPPOE_USER" ] || [ -z "$WAN_PPPOE_PASSWORD" ] || [ -z "$WAN_PPPOE_SERVICE_NAME" ]; then
+          echo "❌ --WAN_CONN_METHOD=pppoe requires --WAN_PPPOE_USER, --WAN_PPPOE_PASSWORD, and --WAN_PPPOE_SERVICE_NAME."
+          usage
+        fi
+        if [ "$WAN_DNS_AUTO_SET" = true ] && ! is_valid_choice "$WAN_DNS_AUTO" "yes" "no"; then
+          echo "❌ Invalid --WAN_DNS_AUTO '$WAN_DNS_AUTO'. Must be yes or no."
+          usage
+        fi
+        if [ "$WAN_DNS_AUTO_SET" != true ]; then
+          WAN_DNS_AUTO="yes"
+        fi
+        if [ "$WAN_DNS_AUTO" = "no" ] && [ -z "$WAN_DNS_SERVERS" ]; then
+          echo "❌ --WAN_DNS_SERVERS is required when --WAN_CONN_METHOD=pppoe and --WAN_DNS_AUTO=no."
+          usage
+        fi
+        if [ "$WAN_IPADDR_SET" = true ] || [ "$WAN_NETMASK_SET" = true ] || [ "$WAN_GATEWAY_SET" = true ]; then
+          echo "❌ Static WAN fields are not allowed when --WAN_CONN_METHOD=pppoe."
+          usage
+        fi
+        ;;
+    esac
+  fi
+
+  if [ "$LAN_CONN_METHOD_SET" = true ]; then
+    lan_method="$LAN_CONN_METHOD"
+    if ! is_valid_choice "$lan_method" "none" "dhcp" "static"; then
+      echo "❌ Invalid --LAN_CONN_METHOD '$lan_method'. Must be one of: none, dhcp, static."
+      usage
+    fi
+
+    case "$lan_method" in
+      none)
+        if [ "$LAN_DHCP_CLIENT_ID_SET" = true ] || [ "$LAN_IPADDR_SET" = true ] || [ "$LAN_NETMASK_SET" = true ]; then
+          echo "❌ LAN DHCP/static fields are not allowed when --LAN_CONN_METHOD=none."
+          usage
+        fi
+        ;;
+      dhcp)
+        if [ "$LAN_IPADDR_SET" = true ] || [ "$LAN_NETMASK_SET" = true ]; then
+          echo "❌ --LAN_IPADDR and --LAN_NETMASK are not allowed when --LAN_CONN_METHOD=dhcp."
+          usage
+        fi
+        ;;
+      static)
+        if [ -z "$LAN_IPADDR" ] || [ -z "$LAN_NETMASK" ]; then
+          echo "❌ --LAN_CONN_METHOD=static requires --LAN_IPADDR and --LAN_NETMASK."
+          usage
+        fi
+        if [ "$LAN_DHCP_CLIENT_ID_SET" = true ]; then
+          echo "❌ --LAN_DHCP_CLIENT_ID is not allowed when --LAN_CONN_METHOD=static."
+          usage
+        fi
+        ;;
+    esac
+  fi
+}
+
+build_cloud_init_user_data() {
+  local user_data='TYPE="Peplink_User_Data"'
+  user_data+=$'\n''VERSION="1"'
+
+  if [ -n "$LICENSE" ]; then
+    user_data+=$'\n''LICENSE="'"$LICENSE"'"'
+  fi
+
+  if [ "$WAN_CONN_METHOD_SET" = true ]; then
+    user_data+=$'\n''WAN_CONN_METHOD="'"$WAN_CONN_METHOD"'"'
+    case "$WAN_CONN_METHOD" in
+      dhcp)
+        user_data+=$'\n''WAN_DNS_AUTO="'"$WAN_DNS_AUTO"'"'
+        if [ "$WAN_DNS_AUTO" = "no" ]; then
+          user_data+=$'\n''WAN_DNS_SERVERS="'"$WAN_DNS_SERVERS"'"'
+        fi
+        ;;
+      static)
+        user_data+=$'\n''WAN_IPADDR="'"$WAN_IPADDR"'"'
+        user_data+=$'\n''WAN_NETMASK="'"$WAN_NETMASK"'"'
+        user_data+=$'\n''WAN_GATEWAY="'"$WAN_GATEWAY"'"'
+        user_data+=$'\n''WAN_DNS_SERVERS="'"$WAN_DNS_SERVERS"'"'
+        ;;
+      pppoe)
+        user_data+=$'\n''WAN_PPPOE_USER="'"$WAN_PPPOE_USER"'"'
+        user_data+=$'\n''WAN_PPPOE_PASSWORD="'"$WAN_PPPOE_PASSWORD"'"'
+        user_data+=$'\n''WAN_PPPOE_SERVICE_NAME="'"$WAN_PPPOE_SERVICE_NAME"'"'
+        user_data+=$'\n''WAN_DNS_AUTO="'"$WAN_DNS_AUTO"'"'
+        if [ "$WAN_DNS_AUTO" = "no" ]; then
+          user_data+=$'\n''WAN_DNS_SERVERS="'"$WAN_DNS_SERVERS"'"'
+        fi
+        ;;
+    esac
+  fi
+
+  if [ "$LAN_CONN_METHOD_SET" = true ]; then
+    user_data+=$'\n''LAN_CONN_METHOD="'"$LAN_CONN_METHOD"'"'
+    case "$LAN_CONN_METHOD" in
+      dhcp)
+        if [ -n "$LAN_DHCP_CLIENT_ID" ]; then
+          user_data+=$'\n''LAN_DHCP_CLIENT_ID="'"$LAN_DHCP_CLIENT_ID"'"'
+        fi
+        ;;
+      static)
+        user_data+=$'\n''LAN_IPADDR="'"$LAN_IPADDR"'"'
+        user_data+=$'\n''LAN_NETMASK="'"$LAN_NETMASK"'"'
+        ;;
+    esac
+  fi
+
+  printf "%s\n" "$user_data"
 }
 
 # Default Variables
@@ -159,6 +359,19 @@ CI_ISO=""                                          # Optional ISO for automated 
 IMG_NAME_LOCAL=""                                  # Optional local image path
 LICENSE=""                                         # Optional license key
 STORAGE=""                                         # Storage pool (auto-detected if not specified)
+WAN_CONN_METHOD=""
+WAN_DNS_AUTO=""
+WAN_DNS_SERVERS=""
+WAN_IPADDR=""
+WAN_NETMASK=""
+WAN_GATEWAY=""
+WAN_PPPOE_USER=""
+WAN_PPPOE_PASSWORD=""
+WAN_PPPOE_SERVICE_NAME=""
+LAN_CONN_METHOD=""
+LAN_DHCP_CLIENT_ID=""
+LAN_IPADDR=""
+LAN_NETMASK=""
 
 # Flags to track if variables are set via arguments
 VM_NAME_SET=false
@@ -173,6 +386,19 @@ CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
 LICENSE_SET=false
 STORAGE_SET=false
+WAN_CONN_METHOD_SET=false
+WAN_DNS_AUTO_SET=false
+WAN_DNS_SERVERS_SET=false
+WAN_IPADDR_SET=false
+WAN_NETMASK_SET=false
+WAN_GATEWAY_SET=false
+WAN_PPPOE_USER_SET=false
+WAN_PPPOE_PASSWORD_SET=false
+WAN_PPPOE_SERVICE_NAME_SET=false
+LAN_CONN_METHOD_SET=false
+LAN_DHCP_CLIENT_ID_SET=false
+LAN_IPADDR_SET=false
+LAN_NETMASK_SET=false
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -256,6 +482,84 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --WAN_CONN_METHOD)
+      WAN_CONN_METHOD="$2"
+      WAN_CONN_METHOD_SET=true
+      shift
+      shift
+      ;;
+    --WAN_DNS_AUTO)
+      WAN_DNS_AUTO="$2"
+      WAN_DNS_AUTO_SET=true
+      shift
+      shift
+      ;;
+    --WAN_DNS_SERVERS)
+      WAN_DNS_SERVERS="$2"
+      WAN_DNS_SERVERS_SET=true
+      shift
+      shift
+      ;;
+    --WAN_IPADDR)
+      WAN_IPADDR="$2"
+      WAN_IPADDR_SET=true
+      shift
+      shift
+      ;;
+    --WAN_NETMASK)
+      WAN_NETMASK="$2"
+      WAN_NETMASK_SET=true
+      shift
+      shift
+      ;;
+    --WAN_GATEWAY)
+      WAN_GATEWAY="$2"
+      WAN_GATEWAY_SET=true
+      shift
+      shift
+      ;;
+    --WAN_PPPOE_USER)
+      WAN_PPPOE_USER="$2"
+      WAN_PPPOE_USER_SET=true
+      shift
+      shift
+      ;;
+    --WAN_PPPOE_PASSWORD)
+      WAN_PPPOE_PASSWORD="$2"
+      WAN_PPPOE_PASSWORD_SET=true
+      shift
+      shift
+      ;;
+    --WAN_PPPOE_SERVICE_NAME)
+      WAN_PPPOE_SERVICE_NAME="$2"
+      WAN_PPPOE_SERVICE_NAME_SET=true
+      shift
+      shift
+      ;;
+    --LAN_CONN_METHOD)
+      LAN_CONN_METHOD="$2"
+      LAN_CONN_METHOD_SET=true
+      shift
+      shift
+      ;;
+    --LAN_DHCP_CLIENT_ID)
+      LAN_DHCP_CLIENT_ID="$2"
+      LAN_DHCP_CLIENT_ID_SET=true
+      shift
+      shift
+      ;;
+    --LAN_IPADDR)
+      LAN_IPADDR="$2"
+      LAN_IPADDR_SET=true
+      shift
+      shift
+      ;;
+    --LAN_NETMASK)
+      LAN_NETMASK="$2"
+      LAN_NETMASK_SET=true
+      shift
+      shift
+      ;;
     --help|-h)
       usage
       ;;
@@ -265,6 +569,8 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+validate_cloud_init_network_config
 
 # Function to display variable values and their source
 display_variables() {
@@ -281,6 +587,21 @@ display_variables() {
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "LICENSE : ${LICENSE:-None} ($( [ "$LICENSE_SET" = true ] && echo "user-defined" || echo "not set"))"
+  echo "WAN_CONN_METHOD : ${WAN_CONN_METHOD:-None} ($( [ "$WAN_CONN_METHOD_SET" = true ] && echo "user-defined" || echo "not set"))"
+  echo "LAN_CONN_METHOD : ${LAN_CONN_METHOD:-None} ($( [ "$LAN_CONN_METHOD_SET" = true ] && echo "user-defined" || echo "not set"))"
+  if has_any_cloud_init_network_arg; then
+    echo "WAN_DNS_AUTO : ${WAN_DNS_AUTO:-None} ($( [ "$WAN_DNS_AUTO_SET" = true ] && echo "user-defined" || echo "default/derived"))"
+    echo "WAN_DNS_SERVERS : ${WAN_DNS_SERVERS:-None} ($( [ "$WAN_DNS_SERVERS_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_IPADDR : ${WAN_IPADDR:-None} ($( [ "$WAN_IPADDR_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_NETMASK : ${WAN_NETMASK:-None} ($( [ "$WAN_NETMASK_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_GATEWAY : ${WAN_GATEWAY:-None} ($( [ "$WAN_GATEWAY_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_PPPOE_USER : ${WAN_PPPOE_USER:-None} ($( [ "$WAN_PPPOE_USER_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_PPPOE_PASSWORD : $( [ "$WAN_PPPOE_PASSWORD_SET" = true ] && echo "<set>" || echo "None" ) ($( [ "$WAN_PPPOE_PASSWORD_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "WAN_PPPOE_SERVICE_NAME : ${WAN_PPPOE_SERVICE_NAME:-None} ($( [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "LAN_DHCP_CLIENT_ID : ${LAN_DHCP_CLIENT_ID:-None} ($( [ "$LAN_DHCP_CLIENT_ID_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "LAN_IPADDR : ${LAN_IPADDR:-None} ($( [ "$LAN_IPADDR_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "LAN_NETMASK : ${LAN_NETMASK:-None} ($( [ "$LAN_NETMASK_SET" = true ] && echo "user-defined" || echo "not set"))"
+  fi
   echo "STORAGE : ${STORAGE:-Auto-detect} ($( [ "$STORAGE_SET" = true ] && echo "user-defined" || echo "auto-detect"))"
   if [ -z "$IMG_NAME_LOCAL" ]; then
     echo "IMG_URL : $IMG_URL ($( [ "$IMG_URL_SET" = true ] && echo "user-defined" || echo "auto-generated"))"
@@ -347,9 +668,13 @@ attach_disk "$VMID" "$IMG_PATH" "$STORAGE"
 # Configure the VM boot options
 configure_boot "$VMID"
 
-# If LICENSE is provided, create Cloud-init ISO
-if [ -n "$LICENSE" ]; then
-  CI_ISO=$(create_cloud_init_iso "$LICENSE" "$VMID" "$VM_NAME")
+# If LICENSE or cloud-init network settings are provided, generate Cloud-init ISO.
+if [ -n "$LICENSE" ] || has_any_cloud_init_network_arg; then
+  if [ -n "$CI_ISO" ]; then
+    echo "ℹ️  Ignoring --CI_ISO because generated cloud-init content takes precedence."
+  fi
+  CI_USER_DATA="$(build_cloud_init_user_data)"
+  CI_ISO=$(create_cloud_init_iso "$CI_USER_DATA" "$VMID" "$VM_NAME")
   CI_ISO_SET=true
 fi
 
