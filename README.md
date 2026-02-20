@@ -150,7 +150,13 @@ When license and/or WAN/LAN flags are provided, the script generates cloud-init 
 - `LICENSE="..."` (only if provided)
 - WAN/LAN variables based on selected methods
 
+When cloud-init ISO is generated, the script also prints:
+- Temporary cloud-init file structure in tree layout
+- Full content of generated cloud-init files (currently `user-data`) for verification
+
 If generated cloud-init content is requested and `--CI_ISO` is also provided, generated cloud-init takes precedence and `--CI_ISO` is ignored.
+
+Warning: cloud-init file output includes full sensitive values (for example `WAN_PPPOE_PASSWORD`) in terminal logs.
 
 ## WAN/LAN Method Matrix
 

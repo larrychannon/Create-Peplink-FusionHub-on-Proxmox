@@ -188,6 +188,52 @@ attach_iso_and_start() {
 }
 
 # Function to create Cloud-init ISO with user-data content
+print_cloud_init_layout_and_contents() {
+  local ci_dir=$1
+  local -a files=()
+  local i=0
+  local file_path=""
+  local file_name=""
+  local branch_prefix=""
+  local -i file_count=0
+
+  while IFS= read -r file_path; do
+    files+=("$file_path")
+  done < <(find "$ci_dir" -mindepth 1 -maxdepth 1 -type f | sort)
+
+  file_count=${#files[@]}
+
+  echo "📁 Cloud-init temp file structure:"
+  echo "${ci_dir}/"
+  if [ "$file_count" -eq 0 ]; then
+    echo "└── (no files)"
+  else
+    for i in "${!files[@]}"; do
+      file_path="${files[$i]}"
+      file_name="$(basename "$file_path")"
+      if [ "$i" -eq $((file_count - 1)) ]; then
+        branch_prefix="└──"
+      else
+        branch_prefix="├──"
+      fi
+      echo "${branch_prefix} ${file_name}"
+    done
+  fi
+
+  echo "📄 Cloud-init file contents:"
+  if [ "$file_count" -eq 0 ]; then
+    echo "(no files to display)"
+    return
+  fi
+
+  for file_path in "${files[@]}"; do
+    file_name="$(basename "$file_path")"
+    echo "----- BEGIN ${file_name} -----"
+    cat "$file_path"
+    echo "----- END ${file_name} -----"
+  done
+}
+
 create_cloud_init_iso() {
   local user_data=$1
   local vmid=$2
@@ -198,6 +244,9 @@ create_cloud_init_iso() {
   
   # Create user-data file
   printf "%s\n" "$user_data" > "$temp_dir/user-data"
+
+  # Print generated cloud-init file layout and contents for verification.
+  print_cloud_init_layout_and_contents "$temp_dir"
   
   # Create the ISO
   genisoimage -output "$iso_path" -volid cidata -joliet -rock "$temp_dir/user-data"
