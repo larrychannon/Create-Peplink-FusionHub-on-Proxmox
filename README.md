@@ -151,8 +151,8 @@ When license and/or WAN/LAN flags are provided, the script generates cloud-init 
 - WAN/LAN variables based on selected methods
 
 When cloud-init ISO is generated, the script also prints:
-- Temporary cloud-init file structure in tree layout
-- Full content of generated cloud-init files (currently `user-data`) for verification
+- Cloud-init ISO internal file structure in tree layout
+- Full content of files from inside the generated ISO (currently `user-data`) for verification
 
 If generated cloud-init content is requested and `--CI_ISO` is also provided, generated cloud-init takes precedence and `--CI_ISO` is ignored.
 

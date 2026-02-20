@@ -187,50 +187,62 @@ attach_iso_and_start() {
   fi
 }
 
-# Function to create Cloud-init ISO with user-data content
-print_cloud_init_layout_and_contents() {
-  local ci_dir=$1
-  local -a files=()
-  local i=0
-  local file_path=""
+print_cloud_init_iso_layout_and_contents() {
+  local iso_path=$1
+  local -a iso_entries=()
+  local -a iso_files=()
+  local entry=""
+  local file_entry=""
   local file_name=""
+  local i=0
   local branch_prefix=""
-  local -i file_count=0
+  local -i entry_count=0
 
-  while IFS= read -r file_path; do
-    files+=("$file_path")
-  done < <(find "$ci_dir" -mindepth 1 -maxdepth 1 -type f | sort)
+  if ! command -v isoinfo >/dev/null 2>&1; then
+    echo "⚠️  Skipping ISO content dump: 'isoinfo' is not installed."
+    return
+  fi
 
-  file_count=${#files[@]}
+  while IFS= read -r entry; do
+    [ -z "$entry" ] && continue
+    iso_entries+=("$entry")
+  done < <(isoinfo -i "$iso_path" -R -f 2>/dev/null | sort)
 
-  echo "📁 Cloud-init temp file structure:"
-  echo "${ci_dir}/"
-  if [ "$file_count" -eq 0 ]; then
-    echo "└── (no files)"
+  for entry in "${iso_entries[@]}"; do
+    if [ "${entry: -1}" != "/" ]; then
+      iso_files+=("$entry")
+    fi
+  done
+
+  entry_count=${#iso_entries[@]}
+
+  echo "📁 Cloud-init ISO file structure:"
+  echo "$iso_path"
+  if [ "$entry_count" -eq 0 ]; then
+    echo "└── (no entries found)"
   else
-    for i in "${!files[@]}"; do
-      file_path="${files[$i]}"
-      file_name="$(basename "$file_path")"
-      if [ "$i" -eq $((file_count - 1)) ]; then
+    for i in "${!iso_entries[@]}"; do
+      entry="${iso_entries[$i]}"
+      if [ "$i" -eq $((entry_count - 1)) ]; then
         branch_prefix="└──"
       else
         branch_prefix="├──"
       fi
-      echo "${branch_prefix} ${file_name}"
+      echo "${branch_prefix} ${entry}"
     done
   fi
 
-  echo "📄 Cloud-init file contents:"
-  if [ "$file_count" -eq 0 ]; then
+  echo "📄 Cloud-init ISO file contents:"
+  if [ "${#iso_files[@]}" -eq 0 ]; then
     echo "(no files to display)"
     return
   fi
 
-  for file_path in "${files[@]}"; do
-    file_name="$(basename "$file_path")"
-    echo "----- BEGIN ${file_name} -----"
-    cat "$file_path"
-    echo "----- END ${file_name} -----"
+  for file_entry in "${iso_files[@]}"; do
+    file_name="$(basename "$file_entry")"
+    echo "----- BEGIN ${file_name} (${file_entry}) -----"
+    isoinfo -i "$iso_path" -R -x "$file_entry" 2>/dev/null
+    echo "----- END ${file_name} (${file_entry}) -----"
   done
 }
 
@@ -245,11 +257,11 @@ create_cloud_init_iso() {
   # Create user-data file
   printf "%s\n" "$user_data" > "$temp_dir/user-data"
 
-  # Print generated cloud-init file layout and contents for verification.
-  print_cloud_init_layout_and_contents "$temp_dir"
-  
   # Create the ISO
   genisoimage -output "$iso_path" -volid cidata -joliet -rock "$temp_dir/user-data"
+
+  # Print generated ISO layout and file contents for verification.
+  print_cloud_init_iso_layout_and_contents "$iso_path"
   
   # Clean up
   rm -rf "$temp_dir"

@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cloud-init ISO generation now uses generated user-data content and is no longer license-only.
 - When generated cloud-init content is requested, generated ISO takes precedence over `--CI_ISO`.
 - Expanded `README.md` with WAN/LAN arguments, mode matrix, precedence behavior, and usage examples.
-- Cloud-init ISO generation now prints temporary cloud-init file tree layout and full file contents for verification.
+- Cloud-init ISO generation now prints ISO internal file tree layout and full file contents for verification.
 
 ### Fixed
 - Correctly attaches imported disks on `dir`-type storages (e.g. `local`) by using the volume ID returned by `qm importdisk`.
