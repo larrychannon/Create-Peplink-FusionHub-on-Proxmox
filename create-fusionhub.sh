@@ -261,7 +261,8 @@ create_cloud_init_iso() {
   genisoimage -output "$iso_path" -volid cidata -joliet -rock "$temp_dir/user-data"
 
   # Print generated ISO layout and file contents for verification.
-  print_cloud_init_iso_layout_and_contents "$iso_path"
+  # Send diagnostics to stderr so command substitution still receives only iso_name.
+  print_cloud_init_iso_layout_and_contents "$iso_path" >&2
   
   # Clean up
   rm -rf "$temp_dir"
