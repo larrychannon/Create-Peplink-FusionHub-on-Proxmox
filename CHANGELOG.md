@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Correctly attaches imported disks on `dir`-type storages (e.g. `local`) by using the volume ID returned by `qm importdisk`.
+- Fixed `--IMG_URL` handling so URL-only input derives `IMG_NAME`/`IMG_PATH` from URL basename.
+- Normalized `IMG_PATH` join logic to avoid duplicate slashes when `IMG_DIR` ends with `/`.
 
 ## [0.0.2] - 2026-01-20
 

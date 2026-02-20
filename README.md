@@ -100,7 +100,7 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 - `--NETWORK`: Network configuration (default: virtio,bridge=vmbr0)
 - `--OS_TYPE`: Operating system type (default: l26)
 - `--IMG_NAME`: Name of the RAW image (default: fusionhub_sfcn-8.5.1s045-build5258.raw)
-- `--IMG_URL`: URL to download the RAW image (optional)
+- `--IMG_URL`: URL to download the firmware image (optional). If `--IMG_NAME` is not set, filename is auto-derived from the URL basename.
 - `--IMG_DIR`: Directory to store the downloaded image (default: /var/lib/vz/template/iso/)
 - `--STORAGE`: Proxmox storage pool to use (default: auto-detect)
 - `--LICENSE`: License key for FusionHub (optional)
@@ -120,6 +120,11 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 - `--LAN_IPADDR`: LAN static IP address (required for static LAN)
 - `--LAN_NETMASK`: LAN static netmask (required for static LAN)
 - `--help` or `-h`: Display help message
+
+### Image Path Behavior
+
+- `IMG_PATH` is normalized when combining `--IMG_DIR` and image name, so trailing slashes in `--IMG_DIR` do not produce `//`.
+- If `--IMG_URL` is provided without `--IMG_NAME`, the script derives the local filename from the URL path.
 
 ## Cloud-init Network Configuration
 

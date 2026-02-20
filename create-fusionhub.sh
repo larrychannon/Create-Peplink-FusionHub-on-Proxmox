@@ -53,6 +53,57 @@ get_storage() {
   pvesm status --content images | awk 'NR>1 && $6>1048576 {print $1; exit}'
 }
 
+join_path() {
+  local dir="$1"
+  local file="$2"
+
+  if [ -z "$dir" ]; then
+    printf "%s\n" "$file"
+    return
+  fi
+
+  while [ "$dir" != "/" ] && [ "${dir%/}" != "$dir" ]; do
+    dir="${dir%/}"
+  done
+
+  if [ "$dir" = "/" ]; then
+    printf "/%s\n" "$file"
+  else
+    printf "%s/%s\n" "$dir" "$file"
+  fi
+}
+
+derive_img_name_from_url() {
+  local url="$1"
+  local clean_url="$url"
+  local no_scheme=""
+  local path_part=""
+  local file_name=""
+
+  clean_url="${clean_url%%\#*}"
+  clean_url="${clean_url%%\?*}"
+
+  if [ -z "$clean_url" ] || [ "${clean_url%/}" != "$clean_url" ]; then
+    printf "\n"
+    return
+  fi
+
+  no_scheme="${clean_url#*://}"
+  path_part="${no_scheme#*/}"
+  if [ "$path_part" = "$no_scheme" ] || [ -z "$path_part" ]; then
+    printf "\n"
+    return
+  fi
+
+  file_name="${path_part##*/}"
+  if [ -z "$file_name" ]; then
+    printf "\n"
+    return
+  fi
+
+  printf "%s\n" "$file_name"
+}
+
 # Simplified Function to download the RAW image if it doesn't exist or is zero bytes
 download_image() {
   local img_url=$1
@@ -354,7 +405,7 @@ OS_TYPE="l26"                                      # Operating system type (chan
 IMG_NAME="fusionhub_sfcn-8.5.1s045-build5258.raw"       # Name of the downloaded image
 IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the RAW image
 IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the downloaded image
-IMG_PATH="$IMG_DIR/$IMG_NAME"                      # Full path to the image
+IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"     # Full path to the image
 CI_ISO=""                                          # Optional ISO for automated setup
 IMG_NAME_LOCAL=""                                  # Optional local image path
 LICENSE=""                                         # Optional license key
@@ -440,7 +491,7 @@ while [[ $# -gt 0 ]]; do
       if [ "$IMG_URL_SET" = false ]; then
         IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # Update IMG_URL if IMG_NAME changes and IMG_URL not explicitly set
       fi
-      IMG_PATH="$IMG_DIR/$IMG_NAME"
+      IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
       IMG_NAME_SET=true
       shift
       shift
@@ -453,7 +504,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --IMG_DIR)
       IMG_DIR="$2"
-      IMG_PATH="$IMG_DIR/$IMG_NAME"
+      IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
       IMG_DIR_SET=true
       shift
       shift
@@ -569,6 +620,16 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# If --IMG_URL is provided without --IMG_NAME, derive local filename from URL.
+if [ "$IMG_URL_SET" = true ] && [ "$IMG_NAME_SET" = false ]; then
+  IMG_NAME="$(derive_img_name_from_url "$IMG_URL")"
+  if [ -z "$IMG_NAME" ]; then
+    echo "❌ Could not derive image filename from --IMG_URL. Please provide --IMG_NAME explicitly."
+    usage
+  fi
+  IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
+fi
 
 validate_cloud_init_network_config
 
