@@ -7,27 +7,38 @@ This script helps you create a FusionHub VM on Proxmox.
 Run the following command in your Proxmox shell to create a VM with default settings:
 
 ```bash
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)"
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))"
 ```
+
+## Verify Downloaded Script Version
+
+Before running installer commands, verify you are fetching the latest script content:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts=$(date +%s)" \
+| rg -n 'join_path\(|derive_img_name_from_url|IMG_PATH="\$\(join_path "\$IMG_DIR" "\$IMG_NAME"\)"'
+```
+
+Expected result: all three markers appear in output.
 
 ## Usage Examples
 
 ### Custom VM Configuration
 ```bash
 # Create a VM with custom name, memory, and CPU cores
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --VM_NAME "MyFusionHub" --MEMORY 2048 --CORES 4
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --VM_NAME "MyFusionHub" --MEMORY 2048 --CORES 4
 ```
 
 ### With License
 ```bash
 # Create a VM with a license key
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --LICENSE "your-license-key-here"
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --LICENSE "your-license-key-here"
 ```
 
 ### Complete Example
 ```bash
 # Create a VM with all custom settings
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- \
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
   --VM_NAME "MyFusionHub" \
   --MEMORY 2048 \
   --CORES 4 \
@@ -40,25 +51,25 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 ### Using Local Image
 ```bash
 # Create a VM using a local image file
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --IMG_NAME_LOCAL "/path/to/your/image.raw"
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --IMG_NAME_LOCAL "/path/to/your/image.raw"
 ```
 
 ### With Specific Storage Pool
 ```bash
 # Create a VM using a specific storage pool (e.g., ZFS storage)
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --STORAGE "local-zfs"
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --STORAGE "local-zfs"
 ```
 
 ### Using Custom Image URL
 ```bash
 # Create a VM using a custom download URL
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- --IMG_URL "https://example.com/path/to/fusionhub.raw"
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --IMG_URL "https://example.com/path/to/fusionhub.raw"
 ```
 
 ### Cloud-init WAN DHCP (DNS Auto)
 ```bash
 # Create a VM with license + WAN DHCP and DNS auto
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- \
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
   --LICENSE "your-license-key-here" \
   --WAN_CONN_METHOD "dhcp"
 ```
@@ -66,7 +77,7 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 ### Cloud-init WAN Static + LAN Static
 ```bash
 # Create a VM with static WAN and static LAN settings
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- \
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
   --LICENSE "your-license-key-here" \
   --WAN_CONN_METHOD "static" \
   --WAN_IPADDR "10.8.8.8" \
@@ -81,7 +92,7 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 ### Cloud-init WAN PPPoE + Manual DNS + LAN None
 ```bash
 # Create a VM with WAN PPPoE and manual DNS servers
-bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxmox/raw/main/create-fusionhub.sh)" -- \
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
   --LICENSE "your-license-key-here" \
   --WAN_CONN_METHOD "pppoe" \
   --WAN_PPPOE_USER "Username" \
@@ -125,6 +136,7 @@ bash -c "$(wget -qLO - https://github.com/larrychannon/Create-FusionHub-on-Proxm
 
 - `IMG_PATH` is normalized when combining `--IMG_DIR` and image name, so trailing slashes in `--IMG_DIR` do not produce `//`.
 - If `--IMG_URL` is provided without `--IMG_NAME`, the script derives the local filename from the URL path.
+- If output still shows default `IMG_NAME` and `IMG_PATH` with `//`, rerun with the cache-busting URL (`?ts=$(date +%s)`) and re-run the verification command above.
 
 ## Cloud-init Network Configuration
 
