@@ -13,18 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - LAN: `none`, `dhcp`, `static` methods with method-specific fields
 - Validation rules for required and disallowed WAN/LAN fields based on selected method.
 - Automatic cloud-init ISO generation when license and/or WAN/LAN settings are provided.
+- Console-based FusionHub WAN static IP setup via `qm sendkey` with new `--CONSOLE_*` CLI flags.
 
 ### Changed
 - Cloud-init ISO generation now uses generated user-data content and is no longer license-only.
 - When generated cloud-init content is requested, generated ISO takes precedence over `--CI_ISO`.
 - Expanded `README.md` with WAN/LAN arguments, mode matrix, precedence behavior, and usage examples.
 - Cloud-init ISO generation now prints ISO internal file tree layout and full file contents for verification.
+- VM startup flow now starts the VM for console static IP setup even without cloud-init and restarts the VM after applying console network settings.
+- Updated `README.md` with console static IP examples, flag documentation, and console/cloud-init interaction rules.
 
 ### Fixed
 - Correctly attaches imported disks on `dir`-type storages (e.g. `local`) by using the volume ID returned by `qm importdisk`.
 - Fixed `--IMG_URL` handling so URL-only input derives `IMG_NAME`/`IMG_PATH` from URL basename.
 - Normalized `IMG_PATH` join logic to avoid duplicate slashes when `IMG_DIR` ends with `/`.
 - Updated README installer commands to use cache-resilient `raw.githubusercontent.com` URL with cache-busting query and added preflight script marker verification.
+- Added validation to reject mixing console static IP setup with cloud-init WAN/LAN network flags and to default console DNS to `8.8.8.8`.
 
 ## [0.0.2] - 2026-01-20
 

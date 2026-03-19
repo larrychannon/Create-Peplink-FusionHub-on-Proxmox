@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool] [--WAN_CONN_METHOD method] [--LAN_CONN_METHOD method]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool] [--WAN_CONN_METHOD method] [--LAN_CONN_METHOD method] [--CONSOLE_STATIC_IP_SETUP]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -17,6 +17,13 @@ usage() {
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
   echo "  --LICENSE     License key for FusionHub (optional)"
   echo "  --STORAGE     Proxmox storage pool to use (default: auto-detect)"
+  echo ""
+  echo "Console static IP options (optional):"
+  echo "  --CONSOLE_STATIC_IP_SETUP Enable FusionHub console static IP setup via qm sendkey"
+  echo "  --CONSOLE_IPADDR          Console static IP address"
+  echo "  --CONSOLE_NETMASK         Console static netmask"
+  echo "  --CONSOLE_GATEWAY         Console default gateway"
+  echo "  --CONSOLE_DNS_SERVER      Console DNS server (default: 8.8.8.8)"
   echo ""
   echo "Cloud-init WAN options (optional):"
   echo "  --WAN_CONN_METHOD        WAN connection method: dhcp, static, pppoe"
@@ -169,22 +176,26 @@ configure_boot() {
   qm set "$vmid" --boot c --bootdisk scsi0 --onboot 1 || { echo "❌ Boot configuration failed."; exit 1; }
 }
 
-# Function to attach ISO and start VM if CI mode
-attach_iso_and_start() {
+# Function to attach ISO to VM
+attach_iso() {
   local vmid=$1
   local iso_name=$2
-  
   local iso_path="/var/lib/vz/template/iso/$iso_name"
-  
+
   if [ -f "$iso_path" ]; then
     echo "💿 Attaching ISO $iso_name to VM $vmid..."
     qm set "$vmid" --ide2 "local:iso/$iso_name,media=cdrom" || { echo "❌ ISO attachment failed."; exit 1; }
-    echo "🚀 Starting VM $vmid..."
-    qm start "$vmid" || { echo "❌ VM start failed."; exit 1; }
   else
     echo "❌ ISO file $iso_path not found."
     exit 1
   fi
+}
+
+start_vm() {
+  local vmid=$1
+
+  echo "🚀 Starting VM $vmid..."
+  qm start "$vmid" || { echo "❌ VM start failed."; exit 1; }
 }
 
 print_cloud_init_iso_layout_and_contents() {
@@ -286,6 +297,10 @@ is_valid_choice() {
 
 has_any_cloud_init_network_arg() {
   [ "$WAN_CONN_METHOD_SET" = true ] || [ "$WAN_DNS_AUTO_SET" = true ] || [ "$WAN_DNS_SERVERS_SET" = true ] || [ "$WAN_IPADDR_SET" = true ] || [ "$WAN_NETMASK_SET" = true ] || [ "$WAN_GATEWAY_SET" = true ] || [ "$WAN_PPPOE_USER_SET" = true ] || [ "$WAN_PPPOE_PASSWORD_SET" = true ] || [ "$WAN_PPPOE_SERVICE_NAME_SET" = true ] || [ "$LAN_CONN_METHOD_SET" = true ] || [ "$LAN_DHCP_CLIENT_ID_SET" = true ] || [ "$LAN_IPADDR_SET" = true ] || [ "$LAN_NETMASK_SET" = true ]
+}
+
+has_any_console_static_ip_arg() {
+  [ "$CONSOLE_STATIC_IPADDR_SET" = true ] || [ "$CONSOLE_STATIC_IP_NETMASK_SET" = true ] || [ "$CONSOLE_STATIC_IP_GATEWAY_SET" = true ] || [ "$CONSOLE_STATIC_IP_DNS_SERVER_SET" = true ]
 }
 
 validate_cloud_init_network_config() {
@@ -405,6 +420,119 @@ validate_cloud_init_network_config() {
   fi
 }
 
+validate_console_static_ip_config() {
+  if has_any_console_static_ip_arg && [ "$CONSOLE_STATIC_IP_SETUP" != true ]; then
+    echo "❌ Console static IP fields were provided but --CONSOLE_STATIC_IP_SETUP is missing."
+    usage
+  fi
+
+  if [ "$CONSOLE_STATIC_IP_SETUP" = true ]; then
+    if has_any_cloud_init_network_arg; then
+      echo "❌ --CONSOLE_STATIC_IP_SETUP cannot be used with cloud-init WAN/LAN network flags."
+      usage
+    fi
+
+    if [ -z "$CONSOLE_STATIC_IPADDR" ] || [ -z "$CONSOLE_STATIC_IP_NETMASK" ] || [ -z "$CONSOLE_STATIC_IP_GATEWAY" ]; then
+      echo "❌ --CONSOLE_STATIC_IP_SETUP requires --CONSOLE_IPADDR, --CONSOLE_NETMASK, and --CONSOLE_GATEWAY."
+      usage
+    fi
+
+    if [ "$CONSOLE_STATIC_IP_DNS_SERVER_SET" != true ]; then
+      CONSOLE_STATIC_IP_DNS_SERVER="8.8.8.8"
+    fi
+  fi
+}
+
+send_vm_key() {
+  local vmid=$1
+  local key=$2
+
+  qm sendkey "$vmid" "$key" || { echo "❌ Failed to send key '$key' to VM $vmid."; exit 1; }
+}
+
+map_char_to_qm_key() {
+  local char=$1
+
+  case "$char" in
+    [a-z0-9])
+      printf "%s\n" "$char"
+      ;;
+    .)
+      printf "dot\n"
+      ;;
+    -)
+      printf "minus\n"
+      ;;
+    *)
+      echo "❌ Unsupported character '$char' for qm sendkey automation." >&2
+      return 1
+      ;;
+  esac
+}
+
+send_vm_text() {
+  local vmid=$1
+  local text=$2
+  local index=0
+  local char=""
+  local key=""
+
+  for ((index = 0; index < ${#text}; index++)); do
+    char="${text:index:1}"
+    key="$(map_char_to_qm_key "$char")" || exit 1
+    send_vm_key "$vmid" "$key"
+  done
+}
+
+send_vm_enter() {
+  local vmid=$1
+
+  send_vm_key "$vmid" "ret"
+}
+
+run_console_static_ip_setup() {
+  local vmid=$1
+  local ipaddr=$2
+  local netmask=$3
+  local gateway=$4
+  local dns_server=$5
+
+  echo "⌛ Waiting 30 seconds for FusionHub console to become ready..."
+  sleep 30
+
+  echo "⌨️  Sending FusionHub console static IP setup sequence..."
+  send_vm_text "$vmid" "setup"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "admin"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "admin"
+  send_vm_enter "$vmid"
+
+  sleep 5
+
+  send_vm_text "$vmid" "1"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "$ipaddr"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "$netmask"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "$gateway"
+  send_vm_enter "$vmid"
+  send_vm_text "$vmid" "$dns_server"
+  send_vm_enter "$vmid"
+
+  sleep 5
+
+  send_vm_text "$vmid" "y"
+  send_vm_enter "$vmid"
+
+  sleep 5
+
+  echo "🔁 Restarting VM $vmid to apply console static IP settings..."
+  qm stop "$vmid" --skiplock 1 || { echo "❌ VM force stop failed."; exit 1; }
+  qm start "$vmid" || { echo "❌ VM restart failed."; exit 1; }
+}
+
 build_cloud_init_user_data() {
   local user_data='TYPE="Peplink_User_Data"'
   user_data+=$'\n''VERSION="1"'
@@ -472,6 +600,11 @@ CI_ISO=""                                          # Optional ISO for automated 
 IMG_NAME_LOCAL=""                                  # Optional local image path
 LICENSE=""                                         # Optional license key
 STORAGE=""                                         # Storage pool (auto-detected if not specified)
+CONSOLE_STATIC_IP_SETUP=false
+CONSOLE_STATIC_IPADDR=""
+CONSOLE_STATIC_IP_NETMASK=""
+CONSOLE_STATIC_IP_GATEWAY=""
+CONSOLE_STATIC_IP_DNS_SERVER=""
 WAN_CONN_METHOD=""
 WAN_DNS_AUTO=""
 WAN_DNS_SERVERS=""
@@ -499,6 +632,11 @@ CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
 LICENSE_SET=false
 STORAGE_SET=false
+CONSOLE_STATIC_IP_SETUP_SET=false
+CONSOLE_STATIC_IPADDR_SET=false
+CONSOLE_STATIC_IP_NETMASK_SET=false
+CONSOLE_STATIC_IP_GATEWAY_SET=false
+CONSOLE_STATIC_IP_DNS_SERVER_SET=false
 WAN_CONN_METHOD_SET=false
 WAN_DNS_AUTO_SET=false
 WAN_DNS_SERVERS_SET=false
@@ -592,6 +730,35 @@ while [[ $# -gt 0 ]]; do
     --STORAGE)
       STORAGE="$2"
       STORAGE_SET=true
+      shift
+      shift
+      ;;
+    --CONSOLE_STATIC_IP_SETUP)
+      CONSOLE_STATIC_IP_SETUP=true
+      CONSOLE_STATIC_IP_SETUP_SET=true
+      shift
+      ;;
+    --CONSOLE_IPADDR)
+      CONSOLE_STATIC_IPADDR="$2"
+      CONSOLE_STATIC_IPADDR_SET=true
+      shift
+      shift
+      ;;
+    --CONSOLE_NETMASK)
+      CONSOLE_STATIC_IP_NETMASK="$2"
+      CONSOLE_STATIC_IP_NETMASK_SET=true
+      shift
+      shift
+      ;;
+    --CONSOLE_GATEWAY)
+      CONSOLE_STATIC_IP_GATEWAY="$2"
+      CONSOLE_STATIC_IP_GATEWAY_SET=true
+      shift
+      shift
+      ;;
+    --CONSOLE_DNS_SERVER)
+      CONSOLE_STATIC_IP_DNS_SERVER="$2"
+      CONSOLE_STATIC_IP_DNS_SERVER_SET=true
       shift
       shift
       ;;
@@ -694,6 +861,7 @@ if [ "$IMG_URL_SET" = true ] && [ "$IMG_NAME_SET" = false ]; then
 fi
 
 validate_cloud_init_network_config
+validate_console_static_ip_config
 
 # Function to display variable values and their source
 display_variables() {
@@ -710,8 +878,15 @@ display_variables() {
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "LICENSE : ${LICENSE:-None} ($( [ "$LICENSE_SET" = true ] && echo "user-defined" || echo "not set"))"
+  echo "CONSOLE_STATIC_IP_SETUP : $CONSOLE_STATIC_IP_SETUP ($( [ "$CONSOLE_STATIC_IP_SETUP_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "WAN_CONN_METHOD : ${WAN_CONN_METHOD:-None} ($( [ "$WAN_CONN_METHOD_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "LAN_CONN_METHOD : ${LAN_CONN_METHOD:-None} ($( [ "$LAN_CONN_METHOD_SET" = true ] && echo "user-defined" || echo "not set"))"
+  if [ "$CONSOLE_STATIC_IP_SETUP" = true ]; then
+    echo "CONSOLE_IPADDR : ${CONSOLE_STATIC_IPADDR:-None} ($( [ "$CONSOLE_STATIC_IPADDR_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "CONSOLE_NETMASK : ${CONSOLE_STATIC_IP_NETMASK:-None} ($( [ "$CONSOLE_STATIC_IP_NETMASK_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "CONSOLE_GATEWAY : ${CONSOLE_STATIC_IP_GATEWAY:-None} ($( [ "$CONSOLE_STATIC_IP_GATEWAY_SET" = true ] && echo "user-defined" || echo "not set"))"
+    echo "CONSOLE_DNS_SERVER : ${CONSOLE_STATIC_IP_DNS_SERVER:-None} ($( [ "$CONSOLE_STATIC_IP_DNS_SERVER_SET" = true ] && echo "user-defined" || echo "default/derived"))"
+  fi
   if has_any_cloud_init_network_arg; then
     echo "WAN_DNS_AUTO : ${WAN_DNS_AUTO:-None} ($( [ "$WAN_DNS_AUTO_SET" = true ] && echo "user-defined" || echo "default/derived"))"
     echo "WAN_DNS_SERVERS : ${WAN_DNS_SERVERS:-None} ($( [ "$WAN_DNS_SERVERS_SET" = true ] && echo "user-defined" || echo "not set"))"
@@ -801,9 +976,19 @@ if [ -n "$LICENSE" ] || has_any_cloud_init_network_arg; then
   CI_ISO_SET=true
 fi
 
-# If CI_ISO is provided, attach it and start the VM
+# Attach generated/provided ISO when requested
 if [ -n "$CI_ISO" ]; then
-  attach_iso_and_start "$VMID" "$CI_ISO"
+  attach_iso "$VMID" "$CI_ISO"
+fi
+
+# Start the VM when cloud-init ISO is attached or console setup is requested
+if [ -n "$CI_ISO" ] || [ "$CONSOLE_STATIC_IP_SETUP" = true ]; then
+  start_vm "$VMID"
+fi
+
+if [ "$CONSOLE_STATIC_IP_SETUP" = true ]; then
+  run_console_static_ip_setup "$VMID" "$CONSOLE_STATIC_IPADDR" "$CONSOLE_STATIC_IP_NETMASK" "$CONSOLE_STATIC_IP_GATEWAY" "$CONSOLE_STATIC_IP_DNS_SERVER"
+  echo "✅ VM with ID $VMID ('$VM_NAME') created and console static IP setup completed successfully."
 else
   echo "✅ VM with ID $VMID ('$VM_NAME') created and RAW image attached successfully."
 fi
