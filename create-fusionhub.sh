@@ -176,6 +176,18 @@ configure_boot() {
   qm set "$vmid" --boot c --bootdisk scsi0 --onboot 1 || { echo "❌ Boot configuration failed."; exit 1; }
 }
 
+print_smbios1_uuid() {
+  local vmid=$1
+  local smbios_uuid=""
+
+  smbios_uuid="$(qm config "$vmid" | sed -nE 's/^smbios1:.*uuid=([^, ]+).*/\1/p' | head -n 1)"
+  if [ -n "$smbios_uuid" ]; then
+    echo "🆔 VM $vmid SMBIOS UUID: $smbios_uuid"
+  else
+    echo "⚠️  Could not determine SMBIOS UUID from 'qm config $vmid'."
+  fi
+}
+
 # Function to attach ISO to VM
 attach_iso() {
   local vmid=$1
@@ -965,6 +977,9 @@ attach_disk "$VMID" "$IMG_PATH" "$STORAGE"
 
 # Configure the VM boot options
 configure_boot "$VMID"
+
+# Print the SMBIOS UUID assigned by Proxmox, if available
+print_smbios1_uuid "$VMID"
 
 # If LICENSE or cloud-init network settings are provided, generate Cloud-init ISO.
 if [ -n "$LICENSE" ] || has_any_cloud_init_network_arg; then
