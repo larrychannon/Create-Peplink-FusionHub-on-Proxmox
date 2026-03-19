@@ -103,6 +103,28 @@ bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-Fu
   --LAN_CONN_METHOD "none"
 ```
 
+### Console WAN Static IP via `qm sendkey` (Default DNS)
+```bash
+# Create a VM and configure WAN static IP from the FusionHub console
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
+  --CONSOLE_STATIC_IP_SETUP \
+  --CONSOLE_IPADDR "10.8.8.8" \
+  --CONSOLE_NETMASK "255.255.255.0" \
+  --CONSOLE_GATEWAY "10.8.8.1"
+```
+
+### Console WAN Static IP via `qm sendkey` (Custom DNS)
+```bash
+# Create a VM and configure WAN static IP from the FusionHub console with custom DNS
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- \
+  --LICENSE "your-license-key-here" \
+  --CONSOLE_STATIC_IP_SETUP \
+  --CONSOLE_IPADDR "10.8.8.8" \
+  --CONSOLE_NETMASK "255.255.255.0" \
+  --CONSOLE_GATEWAY "10.8.8.1" \
+  --CONSOLE_DNS_SERVER "1.1.1.1"
+```
+
 ## Available Arguments
 
 - `--VM_NAME`: Name of the new VM (default: FusionHub)
@@ -117,6 +139,11 @@ bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-Fu
 - `--LICENSE`: License key for FusionHub (optional)
 - `--IMG_NAME_LOCAL`: Path to local RAW image file (optional)
 - `--CI_ISO`: Existing cloud-init ISO to attach (optional; ignored when generated cloud-init is used)
+- `--CONSOLE_STATIC_IP_SETUP`: Enable console-based WAN static IP setup using `qm sendkey`
+- `--CONSOLE_IPADDR`: Console WAN static IP address (required with `--CONSOLE_STATIC_IP_SETUP`)
+- `--CONSOLE_NETMASK`: Console WAN static netmask (required with `--CONSOLE_STATIC_IP_SETUP`)
+- `--CONSOLE_GATEWAY`: Console WAN default gateway (required with `--CONSOLE_STATIC_IP_SETUP`)
+- `--CONSOLE_DNS_SERVER`: Console WAN DNS server (optional; default: `8.8.8.8`)
 - `--WAN_CONN_METHOD`: WAN mode (`dhcp`, `static`, `pppoe`)
 - `--WAN_DNS_AUTO`: WAN DNS auto (`yes`, `no`) for `dhcp`/`pppoe` (default: `yes`)
 - `--WAN_DNS_SERVERS`: Quoted, space-separated DNS IP list (required for static WAN; required when WAN DNS auto is `no`)
@@ -157,6 +184,32 @@ When cloud-init ISO is generated, the script also prints:
 If generated cloud-init content is requested and `--CI_ISO` is also provided, generated cloud-init takes precedence and `--CI_ISO` is ignored.
 
 Warning: cloud-init file output includes full sensitive values (for example `WAN_PPPOE_PASSWORD`) in terminal logs.
+
+## Console Static IP Setup
+
+Console static IP setup is a separate path from cloud-init networking. When `--CONSOLE_STATIC_IP_SETUP` is enabled:
+
+- `--CONSOLE_IPADDR`, `--CONSOLE_NETMASK`, and `--CONSOLE_GATEWAY` are required
+- `--CONSOLE_DNS_SERVER` is optional and defaults to `8.8.8.8`
+- Console static IP setup cannot be combined with any `--WAN_*` or `--LAN_*` cloud-init network flags
+- `--LICENSE` is still allowed and can be combined with console static IP setup
+- The script starts the VM even if no cloud-init ISO is attached, waits 30 seconds, sends the FusionHub console sequence with `qm sendkey`, waits for the configuration to apply, then force-stops and powers the VM on again
+
+The console sequence sent by the script is:
+
+1. `setup`
+2. `admin`
+3. `admin`
+4. wait 5 seconds
+5. `1`
+6. IP address
+7. netmask
+8. default gateway
+9. DNS server
+10. wait 5 seconds
+11. `y`
+12. wait 5 seconds
+13. force stop and power on the VM
 
 ## WAN/LAN Method Matrix
 
