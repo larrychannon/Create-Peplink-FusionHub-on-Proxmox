@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Validation rules for required and disallowed WAN/LAN fields based on selected method.
 - Automatic cloud-init ISO generation when license and/or WAN/LAN settings are provided.
 - Console-based FusionHub WAN static IP setup via `qm sendkey` with new `--CONSOLE_*` CLI flags.
+- UEFI VM creation via `--UEFI`, with separate `--IMG_NAME_UEFI` and `--IMG_URL_UEFI` image settings and an EFI disk.
 
 ### Changed
 - Cloud-init ISO generation now uses generated user-data content and is no longer license-only.

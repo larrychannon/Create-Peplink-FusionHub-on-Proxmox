@@ -66,6 +66,12 @@ bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-Fu
 bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --IMG_URL "https://example.com/path/to/fusionhub.raw"
 ```
 
+### UEFI VM
+```bash
+# Create a VM with OVMF UEFI firmware and an EFI disk
+bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-FusionHub-on-Proxmox/main/create-fusionhub.sh?ts='$(date +%s))" -- --UEFI
+```
+
 ### Cloud-init WAN DHCP (DNS Auto)
 ```bash
 # Create a VM with license + WAN DHCP and DNS auto
@@ -134,6 +140,9 @@ bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-Fu
 - `--OS_TYPE`: Operating system type (default: l26)
 - `--IMG_NAME`: Name of the RAW image (default: fusionhub_sfcn-8.5.1s045-build5258.raw)
 - `--IMG_URL`: URL to download the firmware image (optional). If `--IMG_NAME` is not set, filename is auto-derived from the URL basename.
+- `--UEFI`: Create the VM with OVMF UEFI firmware and an EFI disk
+- `--IMG_NAME_UEFI`: Name of the UEFI RAW image (default: fusionhub_sfcnhw2-8.5.1s045-build5258.raw)
+- `--IMG_URL_UEFI`: URL to download the UEFI firmware image (optional). If `--IMG_NAME_UEFI` is not set, filename is auto-derived from the URL basename.
 - `--IMG_DIR`: Directory to store the downloaded image (default: /var/lib/vz/template/iso/)
 - `--STORAGE`: Proxmox storage pool to use (default: auto-detect)
 - `--LICENSE`: License key for FusionHub (optional)
@@ -163,6 +172,8 @@ bash -c "$(wget -qLO - 'https://raw.githubusercontent.com/larrychannon/Create-Fu
 
 - `IMG_PATH` is normalized when combining `--IMG_DIR` and image name, so trailing slashes in `--IMG_DIR` do not produce `//`.
 - If `--IMG_URL` is provided without `--IMG_NAME`, the script derives the local filename from the URL path.
+- BIOS and UEFI image names are separate. `--IMG_NAME` only affects BIOS mode; `--IMG_NAME_UEFI` only affects `--UEFI` mode.
+- In UEFI mode, the script downloads and imports `--IMG_NAME_UEFI`/`--IMG_URL_UEFI` unless `--IMG_NAME_LOCAL` is provided.
 - If output still shows default `IMG_NAME` and `IMG_PATH` with `//`, rerun with the cache-busting URL (`?ts=$(date +%s)`) and re-run the verification command above.
 
 ## Cloud-init Network Configuration

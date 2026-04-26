@@ -2,7 +2,7 @@
 
 # Function to display usage information
 usage() {
-  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool] [--WAN_CONN_METHOD method] [--LAN_CONN_METHOD method] [--CONSOLE_STATIC_IP_SETUP]"
+  echo "Usage: $0 [--VM_NAME name] [--MEMORY memory_in_MB] [--CORES number_of_cores] [--NETWORK network_config] [--OS_TYPE os_type] [--IMG_NAME image_name] [--IMG_URL image_url] [--IMG_NAME_UEFI image_name] [--IMG_URL_UEFI image_url] [--IMG_DIR image_directory] [--CI_ISO iso_name] [--IMG_NAME_LOCAL local_image_path] [--LICENSE license_key] [--STORAGE storage_pool] [--UEFI] [--WAN_CONN_METHOD method] [--LAN_CONN_METHOD method] [--CONSOLE_STATIC_IP_SETUP]"
   echo ""
   echo "Options:"
   echo "  --VM_NAME     Name of the new VM (default: FusionHub)"
@@ -12,11 +12,14 @@ usage() {
   echo "  --OS_TYPE     Operating system type (default: l26)"
   echo "  --IMG_NAME    Name of the RAW image (default: fusionhub_sfcn-8.5.1s045-build5258.raw)"
   echo "  --IMG_URL     URL to download the RAW image (optional)"
+  echo "  --IMG_NAME_UEFI Name of the UEFI RAW image (default: fusionhub_sfcnhw2-8.5.1s045-build5258.raw)"
+  echo "  --IMG_URL_UEFI  URL to download the UEFI RAW image (optional)"
   echo "  --IMG_DIR     Directory to store the downloaded image (default: /var/lib/vz/template/iso/)"
   echo "  --CI_ISO      Name of the ISO file for automated setup (optional)"
   echo "  --IMG_NAME_LOCAL  Path to local RAW image file (optional)"
   echo "  --LICENSE     License key for FusionHub (optional)"
   echo "  --STORAGE     Proxmox storage pool to use (default: auto-detect)"
+  echo "  --UEFI        Create the VM with OVMF UEFI firmware and an EFI disk"
   echo ""
   echo "Console static IP options (optional):"
   echo "  --CONSOLE_STATIC_IP_SETUP Enable FusionHub console static IP setup via qm sendkey"
@@ -136,6 +139,15 @@ create_vm() {
 
   echo "🔧 Creating VM with ID $vmid..."
   qm create "$vmid" --name "$vm_name" --memory "$memory" --cores "$cores" --net0 "$network" --ostype "$os_type" || { echo "❌ VM creation failed."; exit 1; }
+}
+
+configure_uefi() {
+  local vmid=$1
+  local storage=$2
+
+  echo "🔧 Configuring UEFI firmware for VM $vmid..."
+  qm set "$vmid" --bios ovmf || { echo "❌ UEFI firmware configuration failed."; exit 1; }
+  qm set "$vmid" --efidisk0 "$storage:0,efitype=4m,pre-enrolled-keys=0" || { echo "❌ EFI disk creation failed."; exit 1; }
 }
 
 # Function to import and attach the RAW disk image to the VM
@@ -606,12 +618,16 @@ NETWORK="virtio,bridge=vmbr0"                      # Network configuration
 OS_TYPE="l26"                                      # Operating system type (change accordingly)
 IMG_NAME="fusionhub_sfcn-8.5.1s045-build5258.raw"       # Name of the downloaded image
 IMG_URL="https://download.peplink.com/firmware/fusionhub/$IMG_NAME" # URL of the RAW image
+IMG_NAME_UEFI="fusionhub_sfcnhw2-8.5.1s045-build5258.raw" # Name of the UEFI downloaded image
+IMG_URL_UEFI="https://download.peplink.com/firmware/fusionhub/$IMG_NAME_UEFI" # URL of the UEFI RAW image
 IMG_DIR="/var/lib/vz/template/iso/"                # Directory to store the downloaded image
 IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"     # Full path to the image
+IMG_PATH_UEFI="$(join_path "$IMG_DIR" "$IMG_NAME_UEFI")" # Full path to the UEFI image
 CI_ISO=""                                          # Optional ISO for automated setup
 IMG_NAME_LOCAL=""                                  # Optional local image path
 LICENSE=""                                         # Optional license key
 STORAGE=""                                         # Storage pool (auto-detected if not specified)
+UEFI=false                                         # Create VM with UEFI firmware and EFI disk
 CONSOLE_STATIC_IP_SETUP=false
 CONSOLE_STATIC_IPADDR=""
 CONSOLE_STATIC_IP_NETMASK=""
@@ -639,11 +655,14 @@ NETWORK_SET=false
 OS_TYPE_SET=false
 IMG_NAME_SET=false
 IMG_URL_SET=false
+IMG_NAME_UEFI_SET=false
+IMG_URL_UEFI_SET=false
 IMG_DIR_SET=false
 CI_ISO_SET=false
 IMG_NAME_LOCAL_SET=false
 LICENSE_SET=false
 STORAGE_SET=false
+UEFI_SET=false
 CONSOLE_STATIC_IP_SETUP_SET=false
 CONSOLE_STATIC_IPADDR_SET=false
 CONSOLE_STATIC_IP_NETMASK_SET=false
@@ -714,9 +733,26 @@ while [[ $# -gt 0 ]]; do
       shift
       shift
       ;;
+    --IMG_NAME_UEFI)
+      IMG_NAME_UEFI="$2"
+      if [ "$IMG_URL_UEFI_SET" = false ]; then
+        IMG_URL_UEFI="https://download.peplink.com/firmware/fusionhub/$IMG_NAME_UEFI"
+      fi
+      IMG_PATH_UEFI="$(join_path "$IMG_DIR" "$IMG_NAME_UEFI")"
+      IMG_NAME_UEFI_SET=true
+      shift
+      shift
+      ;;
+    --IMG_URL_UEFI)
+      IMG_URL_UEFI="$2"
+      IMG_URL_UEFI_SET=true
+      shift
+      shift
+      ;;
     --IMG_DIR)
       IMG_DIR="$2"
       IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
+      IMG_PATH_UEFI="$(join_path "$IMG_DIR" "$IMG_NAME_UEFI")"
       IMG_DIR_SET=true
       shift
       shift
@@ -743,6 +779,11 @@ while [[ $# -gt 0 ]]; do
       STORAGE="$2"
       STORAGE_SET=true
       shift
+      shift
+      ;;
+    --UEFI)
+      UEFI=true
+      UEFI_SET=true
       shift
       ;;
     --CONSOLE_STATIC_IP_SETUP)
@@ -872,6 +913,31 @@ if [ "$IMG_URL_SET" = true ] && [ "$IMG_NAME_SET" = false ]; then
   IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
 fi
 
+if [ "$IMG_URL_UEFI_SET" = true ] && [ "$IMG_NAME_UEFI_SET" = false ]; then
+  IMG_NAME_UEFI="$(derive_img_name_from_url "$IMG_URL_UEFI")"
+  if [ -z "$IMG_NAME_UEFI" ]; then
+    echo "❌ Could not derive UEFI image filename from --IMG_URL_UEFI. Please provide --IMG_NAME_UEFI explicitly."
+    usage
+  fi
+fi
+
+IMG_PATH="$(join_path "$IMG_DIR" "$IMG_NAME")"
+IMG_PATH_UEFI="$(join_path "$IMG_DIR" "$IMG_NAME_UEFI")"
+
+if [ "$UEFI" = true ]; then
+  EFFECTIVE_IMG_NAME="$IMG_NAME_UEFI"
+  EFFECTIVE_IMG_URL="$IMG_URL_UEFI"
+  EFFECTIVE_IMG_PATH="$IMG_PATH_UEFI"
+  EFFECTIVE_IMG_NAME_SET="$IMG_NAME_UEFI_SET"
+  EFFECTIVE_IMG_URL_SET="$IMG_URL_UEFI_SET"
+else
+  EFFECTIVE_IMG_NAME="$IMG_NAME"
+  EFFECTIVE_IMG_URL="$IMG_URL"
+  EFFECTIVE_IMG_PATH="$IMG_PATH"
+  EFFECTIVE_IMG_NAME_SET="$IMG_NAME_SET"
+  EFFECTIVE_IMG_URL_SET="$IMG_URL_SET"
+fi
+
 validate_cloud_init_network_config
 validate_console_static_ip_config
 
@@ -885,7 +951,9 @@ display_variables() {
   echo "CORES   : $CORES ($( [ "$CORES_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "NETWORK : $NETWORK ($( [ "$NETWORK_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "OS_TYPE : $OS_TYPE ($( [ "$OS_TYPE_SET" = true ] && echo "user-defined" || echo "default"))"
+  echo "UEFI    : $UEFI ($( [ "$UEFI_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "IMG_NAME: $IMG_NAME ($( [ "$IMG_NAME_SET" = true ] && echo "user-defined" || echo "default"))"
+  echo "IMG_NAME_UEFI: $IMG_NAME_UEFI ($( [ "$IMG_NAME_UEFI_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "IMG_DIR : $IMG_DIR ($( [ "$IMG_DIR_SET" = true ] && echo "user-defined" || echo "default"))"
   echo "CI_ISO  : ${CI_ISO:-None} ($( [ "$CI_ISO_SET" = true ] && echo "user-defined" || echo "not set"))"
   echo "IMG_NAME_LOCAL: ${IMG_NAME_LOCAL:-None} ($( [ "$IMG_NAME_LOCAL_SET" = true ] && echo "user-defined" || echo "not set"))"
@@ -914,8 +982,9 @@ display_variables() {
   fi
   echo "STORAGE : ${STORAGE:-Auto-detect} ($( [ "$STORAGE_SET" = true ] && echo "user-defined" || echo "auto-detect"))"
   if [ -z "$IMG_NAME_LOCAL" ]; then
-    echo "IMG_URL : $IMG_URL ($( [ "$IMG_URL_SET" = true ] && echo "user-defined" || echo "auto-generated"))"
-    echo "IMG_PATH: $IMG_PATH"
+    echo "EFFECTIVE_IMG_NAME: $EFFECTIVE_IMG_NAME ($( [ "$EFFECTIVE_IMG_NAME_SET" = true ] && echo "user-defined" || echo "default/derived"))"
+    echo "EFFECTIVE_IMG_URL : $EFFECTIVE_IMG_URL ($( [ "$EFFECTIVE_IMG_URL_SET" = true ] && echo "user-defined" || echo "auto-generated"))"
+    echo "EFFECTIVE_IMG_PATH: $EFFECTIVE_IMG_PATH"
   fi
   echo "----------------------------------------"
 }
@@ -957,7 +1026,7 @@ echo "📦 Using storage: $STORAGE (Type: $STORAGE_TYPE, Source: $STORAGE_SOURCE
 if [ -n "$IMG_NAME_LOCAL" ]; then
   if [ -f "$IMG_NAME_LOCAL" ]; then
     echo "✅ Using local image: $IMG_NAME_LOCAL"
-    IMG_PATH="$IMG_NAME_LOCAL"
+    EFFECTIVE_IMG_PATH="$IMG_NAME_LOCAL"
   else
     echo "❌ Local image file not found: $IMG_NAME_LOCAL"
     exit 1
@@ -966,14 +1035,18 @@ else
   # Create the image directory if it doesn't exist
   mkdir -p "$IMG_DIR" || { echo "❌ Failed to create directory '$IMG_DIR'."; exit 1; }
   # Download the RAW image if it doesn't already exist or is zero bytes
-  download_image "$IMG_URL" "$IMG_PATH"
+  download_image "$EFFECTIVE_IMG_URL" "$EFFECTIVE_IMG_PATH"
 fi
 
 # Create a new VM
 create_vm "$VMID" "$VM_NAME" "$MEMORY" "$CORES" "$NETWORK" "$OS_TYPE"
 
+if [ "$UEFI" = true ]; then
+  configure_uefi "$VMID" "$STORAGE"
+fi
+
 # Import and attach the RAW disk image to the VM
-attach_disk "$VMID" "$IMG_PATH" "$STORAGE"
+attach_disk "$VMID" "$EFFECTIVE_IMG_PATH" "$STORAGE"
 
 # Configure the VM boot options
 configure_boot "$VMID"
